@@ -49,10 +49,12 @@
       <div id="presenceList" class="presence-list"></div>
     </header>
 
-    <main class="canvas-wrap">
-      <canvas id="board"></canvas>
-      <canvas id="preview"></canvas>
-      <div id="cursorLayer" class="cursor-layer"></div>
+    <main class="canvas-wrap" id="canvasWrap">
+      <div class="canvas-stage" id="canvasStage">
+        <canvas id="board"></canvas>
+        <canvas id="preview"></canvas>
+        <div id="cursorLayer" class="cursor-layer"></div>
+      </div>
       <p id="toast" class="toast"></p>
     </main>
 
@@ -68,6 +70,10 @@
       </div>
 
       <div class="tool-group swatches" id="swatches"></div>
+
+      <div class="tool-group">
+        <input type="color" id="colorPicker" class="color-picker" value="#E8637C" title="Elegir cualquier color" />
+      </div>
 
       <div class="tool-group">
         <input type="range" id="sizeRange" min="2" max="40" value="6" />

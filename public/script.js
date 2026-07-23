@@ -6,6 +6,8 @@
   const roomInput = document.getElementById("roomInput");
   const newRoomBtn = document.getElementById("newRoomBtn");
 
+  const canvasWrap = document.getElementById("canvasWrap");
+  const canvasStage = document.getElementById("canvasStage");
   const canvas = document.getElementById("board");
   const ctx = canvas.getContext("2d");
   const preview = document.getElementById("preview");
@@ -16,6 +18,7 @@
   const presenceList = document.getElementById("presenceList");
   const toolsEl = document.getElementById("tools");
   const swatchesEl = document.getElementById("swatches");
+  const colorPicker = document.getElementById("colorPicker");
   const sizeRange = document.getElementById("sizeRange");
   const sizePreview = document.getElementById("sizePreview");
   const undoBtn = document.getElementById("undoBtn");
@@ -23,6 +26,17 @@
   const saveBtn = document.getElementById("saveBtn");
 
   const PALETTE = ["#21243D", "#E8637C", "#DFAE49", "#7BA6A0", "#9C8AD9", "#FBF6EC"];
+
+  // Tamaño fijo del "mundo": el lienzo mide siempre lo mismo para
+  // todas las personas en la sala, sin importar el tamaño de su
+  // pantalla. Lo que cambia por dispositivo es el zoom/pan (cámara)
+  // con el que cada quien lo está mirando.
+  const WORLD_W = 1600;
+  const WORLD_H = 1000;
+  const MAX_ZOOM_MULT = 5; // cuánto más se puede acercar respecto al "ajustar a pantalla"
+
+  let camera = { scale: 1, x: 0, y: 0 };
+  let fitScale = 1;
 
   let room = "";
   let myName = "";
@@ -61,7 +75,8 @@
     gate.classList.add("hidden");
     app.classList.remove("hidden");
     roomCodeBtn.textContent = room;
-    resizeCanvas();
+    initCanvasResolution();
+    fitToScreen();
     connectSocket();
   }
 
@@ -78,27 +93,81 @@
 
   // ---------- Lienzo: tamaño y utilidades ----------
 
-  function sizeCanvasEl(el, c, rect, ratio) {
-    el.width = rect.width * ratio;
-    el.height = rect.height * ratio;
-    el.style.width = rect.width + "px";
-    el.style.height = rect.height + "px";
+  function sizeCanvasEl(el, c, ratio) {
+    el.width = WORLD_W * ratio;
+    el.height = WORLD_H * ratio;
+    el.style.width = WORLD_W + "px";
+    el.style.height = WORLD_H + "px";
     c.setTransform(ratio, 0, 0, ratio, 0, 0);
   }
 
-  function resizeCanvas() {
-    const rect = canvas.parentElement.getBoundingClientRect();
+  function initCanvasResolution() {
     const ratio = window.devicePixelRatio || 1;
-    sizeCanvasEl(canvas, ctx, rect, ratio);
-    sizeCanvasEl(preview, pctx, rect, ratio);
+    sizeCanvasEl(canvas, ctx, ratio);
+    sizeCanvasEl(preview, pctx, ratio);
+    canvasStage.style.width = WORLD_W + "px";
+    canvasStage.style.height = WORLD_H + "px";
     redrawAll();
   }
-  window.addEventListener("resize", resizeCanvas);
-  window.addEventListener("orientationchange", () => setTimeout(resizeCanvas, 200));
+
+  // ---------- Cámara: zoom y desplazamiento sobre el lienzo ----------
+
+  function applyCameraTransform() {
+    canvasStage.style.transform = `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`;
+    // Los corazones/nombres de la pareja mantienen su tamaño visual
+    // aunque el lienzo esté con zoom.
+    Object.values(cursorEls).forEach((el) => {
+      el.style.transform = `translate(-50%, -100%) scale(${1 / camera.scale})`;
+    });
+  }
+
+  function clampCamera() {
+    const rect = canvasWrap.getBoundingClientRect();
+    const worldW = WORLD_W * camera.scale;
+    const worldH = WORLD_H * camera.scale;
+
+    if (worldW <= rect.width) {
+      camera.x = (rect.width - worldW) / 2;
+    } else {
+      camera.x = Math.min(0, Math.max(rect.width - worldW, camera.x));
+    }
+    if (worldH <= rect.height) {
+      camera.y = (rect.height - worldH) / 2;
+    } else {
+      camera.y = Math.min(0, Math.max(rect.height - worldH, camera.y));
+    }
+  }
+
+  function fitToScreen() {
+    const rect = canvasWrap.getBoundingClientRect();
+    fitScale = Math.min(rect.width / WORLD_W, rect.height / WORLD_H) || 1;
+    camera.scale = fitScale;
+    camera.x = (rect.width - WORLD_W * fitScale) / 2;
+    camera.y = (rect.height - WORLD_H * fitScale) / 2;
+    applyCameraTransform();
+  }
+
+  function handleViewportResize() {
+    if (!app || app.classList.contains("hidden")) return;
+    const wasFit = Math.abs(camera.scale - fitScale) < 0.001;
+    const rect = canvasWrap.getBoundingClientRect();
+    fitScale = Math.min(rect.width / WORLD_W, rect.height / WORLD_H) || 1;
+    if (wasFit || camera.scale < fitScale) {
+      fitToScreen();
+    } else {
+      clampCamera();
+      applyCameraTransform();
+    }
+  }
+  window.addEventListener("resize", handleViewportResize);
+  window.addEventListener("orientationchange", () => setTimeout(handleViewportResize, 200));
 
   function pointFromEvent(e) {
     const rect = canvas.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    return {
+      x: (e.clientX - rect.left) / camera.scale,
+      y: (e.clientY - rect.top) / camera.scale,
+    };
   }
 
   function hexToRgb(hex) {
@@ -299,21 +368,97 @@
     current = null;
   }
 
+  // ---------- Zoom y desplazamiento con dos dedos ----------
+
+  const activePointers = new Map(); // pointerId -> {x, y} en coordenadas de pantalla
+  let pinch = null;
+
+  function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+  function midpoint(a, b) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+
+  function cancelActiveDrawing() {
+    drawing = false;
+    current = null;
+    shapeStart = null;
+    pctx.clearRect(0, 0, preview.width, preview.height);
+  }
+
+  function startPinch() {
+    cancelActiveDrawing();
+    const pts = [...activePointers.values()];
+    const rect = canvasWrap.getBoundingClientRect();
+    const mid = midpoint(pts[0], pts[1]);
+    pinch = {
+      startDist: dist(pts[0], pts[1]) || 1,
+      startScale: camera.scale,
+      focal: {
+        x: (mid.x - rect.left - camera.x) / camera.scale,
+        y: (mid.y - rect.top - camera.y) / camera.scale,
+      },
+    };
+  }
+
+  function updatePinch() {
+    const pts = [...activePointers.values()];
+    if (pts.length < 2 || !pinch) return;
+    const rect = canvasWrap.getBoundingClientRect();
+    const mid = midpoint(pts[0], pts[1]);
+    const newDist = dist(pts[0], pts[1]) || 1;
+    const minScale = fitScale;
+    const maxScale = fitScale * MAX_ZOOM_MULT;
+    let scale = pinch.startScale * (newDist / pinch.startDist);
+    scale = Math.min(maxScale, Math.max(minScale, scale));
+    camera.scale = scale;
+    camera.x = (mid.x - rect.left) - pinch.focal.x * scale;
+    camera.y = (mid.y - rect.top) - pinch.focal.y * scale;
+    clampCamera();
+    applyCameraTransform();
+  }
+
   canvas.addEventListener("pointerdown", (e) => {
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (activePointers.size === 2) {
+      startPinch();
+      return;
+    }
+    if (activePointers.size > 2 || pinch) return;
     drawing = true;
     lastKnownPoint = pointFromEvent(e);
     canvas.setPointerCapture(e.pointerId);
     startInteraction(lastKnownPoint);
   });
   canvas.addEventListener("pointermove", (e) => {
+    if (activePointers.has(e.pointerId)) {
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    if (pinch && activePointers.size >= 2) {
+      updatePinch();
+      return;
+    }
     const p = pointFromEvent(e);
-    socket?.emit("cursor", { x: p.x / canvas.clientWidth, y: p.y / canvas.clientHeight });
+    socket?.emit("cursor", { x: p.x, y: p.y });
     if (drawing) moveInteraction(p);
   });
-  canvas.addEventListener("pointerup", (e) => { drawing = false; endInteraction(pointFromEvent(e)); });
-  canvas.addEventListener("pointercancel", () => { drawing = false; endInteraction(lastKnownPoint); });
 
-  // Evita que el navegador haga scroll/zoom al dibujar con el dedo en celular
+  function endPointer(e) {
+    activePointers.delete(e.pointerId);
+    if (pinch) {
+      if (activePointers.size < 2) pinch = null;
+      return;
+    }
+    drawing = false;
+    endInteraction(pointFromEvent(e));
+  }
+  canvas.addEventListener("pointerup", endPointer);
+  canvas.addEventListener("pointercancel", (e) => {
+    activePointers.delete(e.pointerId);
+    if (activePointers.size < 2) pinch = null;
+    drawing = false;
+    endInteraction(lastKnownPoint);
+  });
+
+  // Evita que el navegador haga scroll/zoom nativo al tocar el lienzo en celular
+  // (el zoom/pan con dos dedos ya lo maneja la app arriba)
   canvas.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
   canvas.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
 
@@ -338,6 +483,7 @@
       b.style.background = c;
       b.addEventListener("click", () => {
         myColor = c;
+        colorPicker.value = c;
         [...swatchesEl.children].forEach((el) => el.classList.remove("active"));
         b.classList.add("active");
         updateSizePreview();
@@ -352,6 +498,13 @@
     const btn = swatchesEl.children[idx >= 0 ? idx : 1];
     btn?.click();
   }
+
+  // Selector de color libre: cualquier color, no solo los de la paleta
+  colorPicker.addEventListener("input", () => {
+    myColor = colorPicker.value;
+    [...swatchesEl.children].forEach((el) => el.classList.remove("active"));
+    updateSizePreview();
+  });
 
   function updateSizePreview() {
     sizePreview.innerHTML = "";
@@ -445,8 +598,9 @@
       if (name) nameEl.textContent = name;
       if (color) { nameEl.style.background = color; heartEl.style.color = color; }
       el.style.opacity = "1";
-      el.style.left = x * canvas.clientWidth + "px";
-      el.style.top = y * canvas.clientHeight + "px";
+      el.style.left = x + "px";
+      el.style.top = y + "px";
+      el.style.transform = `translate(-50%, -100%) scale(${1 / camera.scale})`;
       clearTimeout(el._hideT);
       el._hideT = setTimeout(() => (el.style.opacity = "0"), 2000);
     });
