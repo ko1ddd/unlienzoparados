@@ -326,3 +326,56 @@ h1, .eyebrow, .room-label { font-family: 'Fraunces', serif; }
   .toolbar { justify-content: center; }
   .presence-list { display: none; }
 }
+
+@media (max-width: 768px) {
+
+  .topbar{
+    padding:8px 12px;
+  }
+
+  .toolbar{
+    padding:8px;
+    gap:8px;
+    justify-content:center;
+  }
+
+  .icon-btn{
+    width:42px;
+    height:42px;
+    font-size:18px;
+  }
+
+  .swatch{
+    width:22px;
+    height:22px;
+  }
+
+  #sizeRange{
+    width:90px;
+  }
+
+}
+
+@media (max-width: 768px){
+
+    html,
+    body{
+        overflow:hidden;
+    }
+
+    .topbar{
+        padding:8px 12px;
+    }
+
+    .toolbar{
+        padding:8px;
+        gap:8px;
+        min-height:58px;
+    }
+
+    .canvas-wrap{
+        height:calc(100vh - 120px);
+        min-height:0;
+    }
+
+}
