@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+<title>Un lienzo para dos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Pantalla de entrada -->
+  <div id="gate" class="gate">
+    <div class="gate-card">
+      <p class="eyebrow">un lienzo para dos</p>
+      <h1>Dibujen algo<br/>solo suyo</h1>
+      <p class="gate-copy">Compartan un código de sala. Quien lo tenga, entra al mismo lienzo — en tiempo real, desde donde estén.</p>
+
+      <form id="joinForm">
+        <label>
+          Tu nombre
+          <input id="nameInput" type="text" maxlength="20" placeholder="¿Cómo te llamas?" required autocomplete="off" />
+        </label>
+
+        <label>
+          Código de sala
+          <input id="roomInput" type="text" maxlength="12" placeholder="ej: luna-y-sol" autocomplete="off" />
+        </label>
+
+        <div class="gate-actions">
+          <button type="submit" class="btn btn-primary">Entrar a la sala</button>
+          <button type="button" id="newRoomBtn" class="btn btn-ghost">Crear sala nueva</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- App principal -->
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div class="room-info">
+        <span class="heart-mark">♡</span>
+        <div>
+          <p class="room-label">sala</p>
+          <button id="roomCodeBtn" class="room-code" title="Copiar código">—</button>
+        </div>
+      </div>
+      <div id="presenceList" class="presence-list"></div>
+    </header>
+
+    <main class="canvas-wrap">
+      <canvas id="board"></canvas>
+      <canvas id="preview"></canvas>
+      <div id="cursorLayer" class="cursor-layer"></div>
+      <p id="toast" class="toast"></p>
+    </main>
+
+    <footer class="toolbar">
+      <div class="tool-group tools" id="tools">
+        <button data-tool="brush" class="icon-btn active" title="Pincel">🖌</button>
+        <button data-tool="eraser" class="icon-btn" title="Goma de borrar">⌫</button>
+        <button data-tool="blur" class="icon-btn" title="Difuminar">〰</button>
+        <button data-tool="line" class="icon-btn" title="Línea">╱</button>
+        <button data-tool="rect" class="icon-btn" title="Rectángulo">▭</button>
+        <button data-tool="circle" class="icon-btn" title="Círculo">◯</button>
+        <button data-tool="fill" class="icon-btn" title="Balde de relleno">🪣</button>
+      </div>
+
+      <div class="tool-group swatches" id="swatches"></div>
+
+      <div class="tool-group">
+        <input type="range" id="sizeRange" min="2" max="40" value="6" />
+        <span id="sizePreview" class="size-preview"></span>
+      </div>
+
+      <div class="tool-group">
+        <button id="undoBtn" class="icon-btn" title="Deshacer mi último trazo">↶</button>
+        <button id="clearBtn" class="icon-btn" title="Limpiar el lienzo">✕</button>
+        <button id="saveBtn" class="icon-btn" title="Guardar como imagen">⬇</button>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
